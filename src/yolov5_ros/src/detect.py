@@ -5,12 +5,11 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
-from cv_bridge import CvBridge
-from pathlib import Path
 import os
 import sys
+from cv_bridge import CvBridge
+from pathlib import Path
 from rostopic import get_topic_type
-
 from sensor_msgs.msg import Image, CompressedImage
 from detection_msgs.msg import BoundingBox, BoundingBoxes
 
@@ -152,6 +151,7 @@ class Yolov5Detector:
                 bounding_box.xmax = int(xyxy[2])
                 bounding_box.ymax = int(xyxy[3])
 
+                #
                 bounding_boxes.bounding_boxes.append(bounding_box)
 
                 # Annotate the image
@@ -189,6 +189,10 @@ class Yolov5Detector:
 
         return img, img0 
 
+    #distance calculation
+    #def mid_pos():
+
+        
 
 if __name__ == "__main__":
 
