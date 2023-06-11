@@ -25,7 +25,6 @@
 
 string Class
 float64 probability
-#float64 distance #尝试添加距离标签
 int64 xmin
 int64 ymin
 int64 xmax

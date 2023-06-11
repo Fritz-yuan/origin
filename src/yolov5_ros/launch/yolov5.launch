@@ -16,23 +16,18 @@
     <arg name="inference_size_w" default="640"/>
 
     <!-- Visualize using OpenCV window -->
-    <arg name="view_image" default="false"/>
+    <arg name="view_image" default="true"/>
 
     <!-- ROS topics -->
     <arg name="input_image_topic" default="/main_camera/image_raw/compressed"/>
     <arg name="output_topic" default="/yolov5/detections"/>
-
-    <!--depth camera topics-->
-    <arg name="input_depth_topic" default="/"/>
-    <arg name="output_depth_topic" default="/yolov5/depth_info"/>
+    <!--find depth topic-->
+    <arg name="depth_image_topic" default="/"/>
+    <arg name="depth_output_topic" default="/yolov5/depth_img"/>    
 
     <!-- Optional topic (publishing annotated image) -->
-    <arg name="publish_image" default="ture"/>
+    <arg name="publish_image" default="false"/>
     <arg name="output_image_topic" default="/yolov5/image_out"/>
-
-    <!--ROS depth toptic publishing-->
-    <arg name="publish_depth_image" default="true">
-    <arg name="output_depth_image" default="/yolov5/depth_out">
 
 
     <node pkg="yolov5_ros" name="detect" type="detect.py" output="screen">
@@ -53,19 +48,10 @@
         <param name="input_image_topic" value="$(arg input_image_topic)"/>
         <param name="output_topic" value="$(arg output_topic)"/>
 
-        <!--获取深度输入topic-->
-        <param name="input_depth_topic" value="$(arg input_depth_topic)">
-        <param name="output_depth_topic" value="$(arg output_depth_topic)"/>
-
         <param name="view_image" value="$(arg view_image)"/>
 
         <param name="publish_image" value="$(arg publish_image)"/>
         <param name="output_image_topic" value="$(arg output_image_topic)"/>
-        
-        <!--publishing depth topic-->
-        <param name="publish_depth_image" value="$(arg publish_depth_image)">
-        <param name="output_depth_image" value="$(arg output_depth_topic)"/>
-
     </node>
     <!-- <include file="$(find camera_launch)/launch/d435.launch"/> -->
 
