@@ -74,8 +74,10 @@ class Yolov5Detector:
         self.model.warmup()  # warmup        
         
         # Initialize subscriber to Image/CompressedImage topic
+        # 初始化订阅输入图像话题，获取topic type， topic name
         input_image_type, input_image_topic, _ = get_topic_type(rospy.get_param("~input_image_topic"), blocking = True)
-        self.compressed_input = input_image_type == "sensor_msgs/CompressedImage"
+        #判断这个input_image_type是不是compressedimage类型的消息
+        self.compressed_input = input_image_type == "sensor_msgs/CompressedImage" 
 
         if self.compressed_input:
             self.image_sub = rospy.Subscriber(
@@ -86,7 +88,15 @@ class Yolov5Detector:
                 input_image_topic, Image, self.callback, queue_size=1
             )
 
-        # Initialize prediction publisher
+        #Initialize subscriber to depth image topic 初始化订阅深度图像
+        input_depth_type, input_depth_topic, _ = get_topic_type(rospy.get_param("~input_depth_topic"), blocking = True)
+        print(input_depth_type)
+        self.depth_image_sub = rospy.Subscriber(
+            input_depth_topic, Image, self.depth_callback, queue_size=1
+        )
+
+
+        # Initialize prediction publisher 此处获取了~outpu_topic的参数，从launch文件中可知默认值是/yolov5/detections
         self.pred_pub = rospy.Publisher(
             rospy.get_param("~output_topic"), BoundingBoxes, queue_size=10
         )
@@ -97,8 +107,37 @@ class Yolov5Detector:
                 rospy.get_param("~output_image_topic"), Image, queue_size=10
             )
         
+        """ 如果已经存在相机的深度图publisher应该不需要写这一部分，不确定，可能也需要一个publisher发布带框的深度图
+        #Initialize depth publisher
+        self.publish_depth_image = rospy.get_param("~publish_depth_image")
+        if self.publish_depth_image:
+            self.depth_pub = rospy.Publisher(
+                rospy.get_param("~output_depth_image"), Image, queue_size=10
+            )
+        """
+        
         # Initialize CV_Bridge
         self.bridge = CvBridge()
+        self.color_image = None
+        self.depth_image = None
+        self.mid_pos = []
+        self.dist = []
+ 
+
+    def preprocess(self, img):
+        """
+        Adapted from yolov5/utils/datasets.py LoadStreams class
+        """
+        img0 = img.copy()
+        #取letterbox返回的第一个值，即img，转换成np数组
+        img = np.array([letterbox(img, self.img_size, stride=self.stride, auto=self.pt)[0]]) 
+        # Convert
+        img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
+        #重新构造一个连续数组img
+        img = np.ascontiguousarray(img)
+
+        return img, img0 
+    
 
     def callback(self, data):
         """adapted from yolov5/detect.py"""
@@ -137,12 +176,18 @@ class Yolov5Detector:
         annotator = Annotator(im0, line_width=self.line_thickness, example=str(self.names))
         if len(det):
             # Rescale boxes from img_size to im0 size
+            # 将Boundingboxes 恢复到原始图像im0的尺寸
             det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
 
             # Write results
             for *xyxy, conf, cls in reversed(det):
                 bounding_box = BoundingBox()
                 c = int(cls)
+
+                #计算框的中心像素坐标
+                mid_pos = [(xyxy[0] + xyxy[2])//2, (xyxy[1] + xyxy[3])//2]
+                self.mid_pos.append(mid_pos)
+
                 # Fill in bounding box message
                 bounding_box.Class = self.names[c]
                 bounding_box.probability = conf 
@@ -175,23 +220,14 @@ class Yolov5Detector:
             cv2.waitKey(1)  # 1 millisecond
         if self.publish_image:
             self.image_pub.publish(self.bridge.cv2_to_imgmsg(im0, "bgr8"))
-        
-
-    def preprocess(self, img):
-        """
-        Adapted from yolov5/utils/datasets.py LoadStreams class
-        """
-        img0 = img.copy()
-        img = np.array([letterbox(img, self.img_size, stride=self.stride, auto=self.pt)[0]])
-        # Convert
-        img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
-        img = np.ascontiguousarray(img)
-
-        return img, img0 
-
-    #distance calculation
-    #def mid_pos():
-
+            self.color_image = im0
+    
+    def depth_callback(self, data):
+        self.depth_image = self.bridge.imgmsg_to_cv2(data, desired_encoding='passthrough')
+        self.depth_image = np.asanyarray(self.depth_image)
+        for pos in self.mid_pos:
+            distance = self.depth_image[int(pos[1]), int(pos[0])] 
+            self.dist = self.dist.append(distance)
         
 
 if __name__ == "__main__":
