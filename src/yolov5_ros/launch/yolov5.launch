@@ -21,6 +21,9 @@
     <!-- ROS topics -->
     <arg name="input_image_topic" default="/main_camera/image_raw/compressed"/>
     <arg name="output_topic" default="/yolov5/detections"/>
+    <!--find depth topic-->
+    <arg name="depth_image_topic" default="/main_camera/image_raw/depth"/>
+    <arg name="depth_output_topic" default="/yolov5/depth_img"/>    
 
     <!-- Optional topic (publishing annotated image) -->
     <arg name="publish_image" default="false"/>
