@@ -7,6 +7,7 @@ import torch.backends.cudnn as cudnn
 import numpy as np
 import os
 import sys
+import random
 from cv_bridge import CvBridge
 from pathlib import Path
 from rostopic import get_topic_type
@@ -88,7 +89,8 @@ class Yolov5Detector:
                 input_image_topic, Image, self.callback, queue_size=1
             )
 
-        #Initialize subscriber to depth image topic 初始化订阅深度图像
+        #Initialize subscriber to depth image topic 初始化订阅深度图像，
+        #此处LAUNCH文件需要修改
         input_depth_type, input_depth_topic, _ = get_topic_type(rospy.get_param("~input_depth_topic"), blocking = True)
         print(input_depth_type)
         self.depth_image_sub = rospy.Subscriber(
@@ -96,7 +98,7 @@ class Yolov5Detector:
         )
 
 
-        # Initialize prediction publisher 此处获取了~outpu_topic的参数，从launch文件中可知默认值是/yolov5/detections
+        # Initialize prediction publisher 建立预测的话题发布，消息类型为boundingboxes
         self.pred_pub = rospy.Publisher(
             rospy.get_param("~output_topic"), BoundingBoxes, queue_size=10
         )
@@ -120,9 +122,34 @@ class Yolov5Detector:
         self.bridge = CvBridge()
         self.color_image = None
         self.depth_image = None
-        self.mid_pos = []
-        self.dist = []
- 
+        
+     #深度callback函数
+    def depth_callback(self, depth_image):
+        try:
+            # Convert depth image to numpy array
+            cv_depth_image = self.bridge.imgmsg_to_cv2(depth_image, desired_encoding='passthrough')
+            self.depth_image = np.array(cv_depth_image, dtype=np.float32)
+            self.depth_image = np.nan_to_num(self.depth_image)  # Replace NaN values with 0
+        except CvBridgeError as e:
+            rospy.logerr('Error converting depth image: {}'.format(e))
+            return     
+
+    def filter(self, x, y, min_val, randnum):
+        distance_list = []
+        #mid_pos = [(box[0] + box[2])//2, (box[1] + box[3])//2] #确定索引深度的中心像素位置
+        #min_val = min(abs(box[2] - box[0]), abs(box[3] - box[1])) #确定深度搜索范围
+        #print(box)
+        for i in range(randnum):
+            bias = random.randint(-min_val//4, min_val//4)
+            dist = self.depth_image[int(y + bias), int(x + bias)]
+            if dist:
+                distance_list.append(dist)
+        distance_list = np.array(distance_list)
+        distance_list = np.sort(distance_list)[randnum//2-randnum//4:randnum//2+randnum//4] #冒泡排序+中值滤波
+    #print(distance_list, np.mean(distance_list))
+        distance = np.mean(distance_list)
+        return distance
+
 
     def preprocess(self, img):
         """
@@ -184,9 +211,16 @@ class Yolov5Detector:
                 bounding_box = BoundingBox()
                 c = int(cls)
 
-                #计算框的中心像素坐标
-                mid_pos = [(xyxy[0] + xyxy[2])//2, (xyxy[1] + xyxy[3])//2]
-                self.mid_pos.append(mid_pos)
+                # Calculate the center of the bounding box
+                x_center = int((xyxy[0] + xyxy[2]) / 2)
+                y_center = int((xyxy[1] + xyxy[3]) / 2)
+
+                min_val = min(abs(xyxy[2] - xyxy[0]), abs(xyxy[3] - xyxy[1]))
+
+                # Add depth i   nformation to the bounding box
+                if self.depth_image is not None:
+                    distance_bbc = self.filter[x_center, y_center, min_val, 24]
+                    bounding_box.distance = distance_bbc
 
                 # Fill in bounding box message
                 bounding_box.Class = self.names[c]
@@ -203,7 +237,7 @@ class Yolov5Detector:
                 if self.publish_image or self.view_image:  # Add bbox to image
                       # integer class
                     label = f"{self.names[c]} {conf:.2f}"
-                    annotator.box_label(xyxy, label, color=colors(c, True))       
+                    annotator.box_label(xyxy, label, color=colors(c, True))     
 
                 
                 ### POPULATE THE DETECTION MESSAGE HERE
@@ -220,14 +254,8 @@ class Yolov5Detector:
             cv2.waitKey(1)  # 1 millisecond
         if self.publish_image:
             self.image_pub.publish(self.bridge.cv2_to_imgmsg(im0, "bgr8"))
-            self.color_image = im0
+            self.color_image = im0            
     
-    def depth_callback(self, data):
-        self.depth_image = self.bridge.imgmsg_to_cv2(data, desired_encoding='passthrough')
-        self.depth_image = np.asanyarray(self.depth_image)
-        for pos in self.mid_pos:
-            distance = self.depth_image[int(pos[1]), int(pos[0])] 
-            self.dist = self.dist.append(distance)
         
 
 if __name__ == "__main__":
